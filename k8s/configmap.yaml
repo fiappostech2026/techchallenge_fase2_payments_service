@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payments-config
+data:
+  RABBITMQ__HOST: "rabbitmq"
+  RABBITMQ__VIRTUALHOST: "/"

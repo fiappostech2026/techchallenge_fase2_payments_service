@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+    spec:
+      containers:
+        - name: payments-api
+          image: fcg-payments-api:latest
+          env:
+            - name: RABBITMQ__HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: payments-config
+                  key: RABBITMQ__HOST
+            - name: RABBITMQ__VIRTUALHOST
+              valueFrom:
+                configMapKeyRef:
+                  name: payments-config
+                  key: RABBITMQ__VIRTUALHOST
+            - name: RABBITMQ__USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: payments-secret
+                  key: RABBITMQ__USERNAME
+            - name: RABBITMQ__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: payments-secret
+                  key: RABBITMQ__PASSWORD
