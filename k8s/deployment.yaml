@@ -15,6 +15,7 @@ spec:
       containers:
         - name: payments-api
           image: fcg-payments-api:latest
+          imagePullPolicy: IfNotPresent
           env:
             - name: RABBITMQ__HOST
               valueFrom:
