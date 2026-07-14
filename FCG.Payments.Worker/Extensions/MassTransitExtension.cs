@@ -15,6 +15,8 @@ public static class MassTransitExtension
 
         services.AddMassTransit(bus =>
         {
+            bus.SetEndpointNameFormatter(new KebabCaseEndpointNameFormatter("payments", false));
+
             bus.AddConsumer<OrderPlacedEventConsumer>();
 
             bus.UsingRabbitMq((context, cfg) =>
@@ -24,6 +26,8 @@ public static class MassTransitExtension
                     rabbitHost.Username(username);
                     rabbitHost.Password(password);
                 });
+
+                cfg.UseRawJsonSerializer(RawSerializerOptions.All, isDefault: true);
 
                 cfg.Message<OrderPlacedEvent>(msgCfg => msgCfg.SetEntityName("order-placed-event"));
                 cfg.Message<PaymentProcessedEvent>(msgCfg => msgCfg.SetEntityName("payment-processed-event"));

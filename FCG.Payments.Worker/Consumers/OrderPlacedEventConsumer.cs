@@ -23,11 +23,14 @@ public sealed class OrderPlacedEventConsumer : IConsumer<OrderPlacedEvent>
 
     public async Task Consume(ConsumeContext<OrderPlacedEvent> context)
     {
+        // delay proposital para demo — dá tempo de ver a mensagem na fila no RabbitMQ Management UI
+        await Task.Delay(TimeSpan.FromSeconds(5));
+
         var result = await _validator.ValidateAsync(context.Message);
 
         if (!result.IsValid)
         {
-            _logger.LogWarning("OrderPlacedEvent validation failed: {Errors}", result.ToString());
+            _logger.LogWarning("Falha na validação de OrderPlacedEvent: {Errors}", result.ToString());
             return;
         }
 
@@ -35,6 +38,6 @@ public sealed class OrderPlacedEventConsumer : IConsumer<OrderPlacedEvent>
 
         await context.Publish(processed);
 
-        _logger.LogInformation("Payment processed for OrderId {OrderId} with Status {Status}", processed.OrderId, processed.Status);
+        _logger.LogInformation("Pagamento processado para OrderId {OrderId} com Status {Status}", processed.OrderId, processed.Status);
     }
 }
