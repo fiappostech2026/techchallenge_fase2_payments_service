@@ -10,8 +10,13 @@ public static class MassTransitExtension
     {
         var host = configuration["RabbitMQ:Host"] ?? "localhost";
         var virtualHost = configuration["RabbitMQ:VirtualHost"] ?? "/";
-        var username = configuration["RabbitMQ:Username"] ?? "guest";
-        var password = configuration["RabbitMQ:Password"] ?? "guest";
+        // Vazio ou só espaços também falha: senão o MassTransit tenta conectar como "guest".
+        var username = configuration["RabbitMQ:Username"];
+        if (string.IsNullOrWhiteSpace(username))
+            throw new InvalidOperationException("RabbitMQ:Username não configurado (variável de ambiente RabbitMQ__Username).");
+        var password = configuration["RabbitMQ:Password"];
+        if (string.IsNullOrWhiteSpace(password))
+            throw new InvalidOperationException("RabbitMQ:Password não configurado (variável de ambiente RabbitMQ__Password).");
         var port = configuration.GetValue<int?>("RabbitMQ:Port");
         var useSsl = configuration.GetValue<bool>("RabbitMQ:UseSsl");
 
