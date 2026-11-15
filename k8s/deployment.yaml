@@ -1,4 +1,4 @@
-# PaymentsAPI (worker). A pipeline (azure-pipelines.yml) troca
+# PaymentsAPI (worker). A pipeline (.github/workflows/ci-cd.yml) troca
 # "fcg-payments-api:latest" pela imagem versionada do ACR antes do kubectl apply.
 apiVersion: apps/v1
 kind: Deployment
@@ -26,7 +26,7 @@ spec:
           ports:
             - containerPort: 8080
           # Credenciais e endereço do RabbitMQ/CloudAMQP vêm do Secret "payments-secret",
-          # criado pela pipeline a partir do Azure DevOps (nunca do Git).
+          # criado pela pipeline a partir dos Secrets do GitHub (nunca do Git).
           envFrom:
             - secretRef:
                 name: payments-secret

@@ -80,7 +80,7 @@ FCG.Payments/
 │   └── Program.cs                 # arquivo que liga tudo e inicia o serviço
 ├── FCG.Payments.Tests/            # testes automatizados
 ├── k8s/                            # manifestos de deploy no Kubernetes (ver seção 6)
-├── azure-pipelines.yml             # pipeline de CI/CD no Azure DevOps (ver seção 7)
+├── .github/workflows/ci-cd.yml     # pipeline de CI/CD no GitHub Actions (ver seção 7)
 ├── .dockerignore                   # o que NÃO entra na imagem Docker (bin/, obj/, k8s/...)
 └── Dockerfile                      # receita para empacotar este serviço em um container
 ```
@@ -95,6 +95,7 @@ sem precisar subir o projeto inteiro.
 ### Opção A — via .NET direto (para quem tem o SDK instalado)
 
 ```bash
+export RabbitMQ__Username=<usuario> RabbitMQ__Password=<senha>
 dotnet run --project FCG.Payments.Worker
 ```
 
@@ -102,7 +103,8 @@ dotnet run --project FCG.Payments.Worker
 
 ```bash
 docker build -t fcg-payments-api:latest .
-docker run --rm -e RABBITMQ__HOST=host.docker.internal fcg-payments-api:latest
+docker run --rm -e RABBITMQ__HOST=host.docker.internal \
+  -e RABBITMQ__USERNAME=<usuario> -e RABBITMQ__PASSWORD=<senha> fcg-payments-api:latest
 ```
 
 > Para rodar o sistema completo (com RabbitMQ e o serviço de Notificações juntos, prontos para
@@ -120,16 +122,17 @@ docker run --rm -e RABBITMQ__HOST=host.docker.internal fcg-payments-api:latest
 | `RabbitMQ__VirtualHost` | "Vhost" (espaço isolado) do RabbitMQ a usar | `/` |
 | `RabbitMQ__Port` | Porta do RabbitMQ (vazio = porta padrão) | vazio |
 | `RabbitMQ__UseSsl` | `true` para conexão segura (TLS), exigida por serviços como o CloudAMQP | `false` |
-| `RabbitMQ__Username` | Usuário de acesso ao RabbitMQ | `guest` (se não informado) |
-| `RabbitMQ__Password` | Senha de acesso ao RabbitMQ | `guest` (se não informado) |
+| `RabbitMQ__Username` | Usuário de acesso ao RabbitMQ | nenhum — **obrigatório** |
+| `RabbitMQ__Password` | Senha de acesso ao RabbitMQ | nenhum — **obrigatório** |
 
 > No Docker/Kubernetes, essas variáveis são escritas com **duplo underscore**
 > (`RABBITMQ__HOST`), que é a forma como o .NET entende "seção : chave" vindo de variáveis de
 > ambiente do sistema operacional.
 
 > **Nenhuma senha fica no código.** O `appsettings.json` só guarda o endereço e o vhost locais
-> (`localhost` e `/`). Usuário e senha sempre chegam por variável de ambiente; se nenhum for
-> informado, o serviço usa `guest`/`guest`, o padrão de um RabbitMQ local de desenvolvimento.
+> (`localhost` e `/`). Usuário e senha sempre chegam por variável de ambiente; se algum dos dois
+> faltar, o serviço **nem inicia** e mostra no log qual variável está faltando (não existe senha
+> padrão escondida no código).
 
 ---
 
@@ -166,21 +169,62 @@ kubectl apply -f k8s/service.yaml -f k8s/deployment.yaml
 
 ---
 
-## 7. CI/CD com Azure DevOps
+## 7. CI/CD com GitHub Actions
 
-O arquivo `azure-pipelines.yml` automatiza o caminho "código → produção". Toda vez que algo
-entra na branch `main`, a pipeline roda três etapas, em ordem:
+O arquivo `.github/workflows/ci-cd.yml` automatiza o caminho "código → produção". Toda vez que
+algo entra na branch `main`, a pipeline roda três etapas (*jobs*), em ordem:
 
 | Etapa | O que faz |
 |---|---|
-| **1. Build & Test** | Compila a solução e roda os testes automatizados, publicando o resultado e a cobertura de código. Também roda em **Pull Requests**, para validar antes do merge (nos PRs, a pipeline para aqui) |
-| **2. Imagem** | Gera a imagem Docker, faz um *scan* de vulnerabilidades com o **Trivy** (por enquanto só reporta, não bloqueia) e envia a imagem para o Azure Container Registry como `<acr>.azurecr.io/fcg-payments-api:<BuildId>` — cada execução tem uma tag única |
-| **3. Deploy no AKS** | Cria/atualiza o Secret `payments-secret` no cluster, aplica `service.yaml` e `deployment.yaml` já com a imagem nova e espera o rollout terminar. Se os Pods novos não ficarem prontos, faz **rollback automático** para a versão anterior |
+| **1. Build & Test** (`build-test`) | Compila a solução e roda os testes automatizados. O resultado dos testes e a cobertura de código ficam para download na página da execução (*artifact* `TestResults`). Também roda em **Pull Requests**, para validar antes do merge (nos PRs, a pipeline para aqui) |
+| **2. Imagem** (`image`) | Gera a imagem Docker, faz um *scan* de vulnerabilidades com o **Trivy** (por enquanto só reporta, não bloqueia) e envia a imagem para o Azure Container Registry como `<acr>.azurecr.io/fcg-payments-api:<número da execução>` — cada execução tem uma tag única |
+| **3. Deploy no AKS** (`deploy`) | Cria/atualiza o Secret `payments-secret` no cluster, aplica `service.yaml` e `deployment.yaml` já com a imagem nova e espera o rollout terminar. Se os Pods novos não ficarem prontos, faz **rollback automático** para a versão anterior |
 
-**Nenhuma credencial fica no Git.** Os valores do Secret vêm do *Variable Group*
-`fcg-shared-secrets` do Azure DevOps (em *Pipelines > Library*), com as variáveis
-`rabbitmq-host`, `rabbitmq-vhost`, `rabbitmq-port`, `rabbitmq-use-ssl`, `rabbitmq-user` e
-`rabbitmq-password`.
+### Configuração no GitHub
+
+Tudo fica em *Settings > Secrets and variables > Actions* do repositório.
+
+**Secrets** (valores sensíveis — o GitHub esconde nos logs):
+
+| Secret | Para que serve |
+|---|---|
+| `AZURE_CLIENT_ID` | ID da identidade (App Registration) que a pipeline usa para entrar no Azure |
+| `AZURE_TENANT_ID` | ID do tenant (diretório) do Azure |
+| `AZURE_SUBSCRIPTION_ID` | ID da assinatura do Azure onde estão o ACR e o AKS |
+| `RABBITMQ_HOST` | Endereço do RabbitMQ/CloudAMQP |
+| `RABBITMQ_VHOST` | Vhost do RabbitMQ |
+| `RABBITMQ_PORT` | Porta do RabbitMQ (pode ficar vazio = porta padrão) |
+| `RABBITMQ_USE_SSL` | `true` para conexão segura (TLS) |
+| `RABBITMQ_USER` | Usuário do RabbitMQ |
+| `RABBITMQ_PASSWORD` | Senha do RabbitMQ |
+
+**Variables** (nomes de infraestrutura, não são segredo):
+
+| Variable | Para que serve |
+|---|---|
+| `ACR_NAME` | Nome do Azure Container Registry (sem `.azurecr.io`) |
+| `AKS_RESOURCE_GROUP` | Resource group do cluster AKS |
+| `AKS_CLUSTER_NAME` | Nome do cluster AKS |
+
+**Login no Azure sem senha (OIDC).** A pipeline não guarda nenhuma senha do Azure. A cada
+execução, o GitHub gera um "crachá" temporário (token OIDC) e o Azure confere se ele veio deste
+repositório, no environment `production`, antes de liberar o acesso. Por isso os jobs `image` e
+`deploy` usam `environment: production` — a credencial federada no Azure é criada exatamente
+para esse caso.
+
+**Nenhuma credencial fica no Git.** Os valores do Secret `payments-secret` vêm dos *Secrets* do
+GitHub listados acima e são gravados no cluster a cada deploy.
+
+### Rodar manualmente
+
+- **Antes do merge:** o deploy de teste roda com um `git push` na branch `tech_fase_4`. O
+  GitHub só mostra o botão **Run workflow** depois que o arquivo do workflow existe na `main`;
+  por isso, até o merge, a `tech_fase_4` também dispara a pipeline (provisório, sai depois do
+  merge).
+- **Depois do merge:** a pipeline roda com push na `main` ou manualmente: na aba **Actions** do
+  repositório, escolha *CI/CD PaymentsAPI* → **Run workflow** e confirme.
+
+Nos dois casos a execução faz o fluxo completo (build, imagem e deploy).
 
 > **Segurança da imagem:** o container roda com um usuário **sem privilégios de root** (o
 > usuário padrão `app` da imagem oficial do .NET, dono só da pasta `logs/`), e o
